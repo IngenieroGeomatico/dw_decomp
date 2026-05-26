@@ -147,6 +147,7 @@ Nota importante: El proyecto corre en Linux. Si usas Windows, hay un Dockerfile 
 
 # 4. Dar permisos (importante para Docker)
 sudo chmod -R 777 external/ build/ src/  asm/
+sudo chmod 777 .
 
 # 5. Compilar
 ./tools/docker_run.sh make -j$(nproc)
