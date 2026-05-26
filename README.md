@@ -157,3 +157,25 @@ sudo chmod 777 .
 ./tools/docker_run.sh make compare  
 # Generar config de objdiff para ver diferencias función a función  
 ./tools/docker_run.sh make objdiff
+
+
+
+------
+
+
+Para contribuir en el proyecto:
+
+git fetch upstream
+
+git checkout -b mis-mejoras-para-pr upstream/main
+
+git cherry-pick z9y8x7w
+
+git reset --soft upstream/main
+
+(quitar los cambios no queridos)
+
+git commit -m "Compilación de mejoras seleccionadas: Ajustes A y C"
+
+git push origin mis-mejoras-para-pr
+
