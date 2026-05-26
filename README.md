@@ -152,6 +152,8 @@ sudo chmod 777 .
 # 5. Compilar
 ./tools/docker_run.sh make -j$(nproc)
 
-
+# 5. Comprobar
+# Comparar tu build con el original  
 ./tools/docker_run.sh make compare  
+# Generar config de objdiff para ver diferencias función a función  
 ./tools/docker_run.sh make objdiff
