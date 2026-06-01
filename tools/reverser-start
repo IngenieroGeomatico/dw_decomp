@@ -1,0 +1,50 @@
+#!/bin/bash
+# Inicia todo el entorno de reverser/decompilación
+# - Ollama con DeepSeek-Coder
+# - Proxy Django (si existe)
+
+echo "=== Iniciando Entorno Reverser ==="
+echo ""
+
+# 1. Iniciar Ollama
+echo "[1/2] Iniciando Ollama (DeepSeek-Coder)..."
+if docker ps --format '{{.Names}}' | grep -q "^ollama$"; then
+    echo "  ✓ Ollama ya está corriendo"
+else
+    docker start ollama 2>/dev/null || \
+    docker run -d --name ollama --restart unless-stopped -p 11434:11434 -v ollama-models:/root/.ollama ollama/ollama:latest
+    echo "  ✓ Ollama iniciado en puerto 11434"
+fi
+
+# 2. Verificar que el modelo está cargado
+echo "[2/2] Verificando modelos DeepSeek-Coder..."
+sleep 2
+MODEL_CHECK=$(curl -s http://localhost:11434/api/tags 2>/dev/null | python3 -c "import sys,json; data=json.load(sys.stdin); models=[m['name'] for m in data.get('models',[])]; print('\\n'.join(models) if models else 'none')" 2>/dev/null)
+
+if echo "$MODEL_CHECK" | grep -q "deepseek-coder:1.3b"; then
+    echo "  ✓ DeepSeek-Coder 1.3B listo (rápido, ~4 tok/s)"
+else
+    echo "  ⚠ Descargando DeepSeek-Coder 1.3B..."
+    docker exec ollama ollama pull deepseek-coder:1.3b
+fi
+
+if echo "$MODEL_CHECK" | grep -q "deepseek-coder:6.7b"; then
+    echo "  ✓ DeepSeek-Coder 6.7B listo (potente, necesita ~6GB RAM)"
+else
+    echo "  ⚠ DeepSeek-Coder 6.7B no encontrado (opcional, descargar con: docker exec ollama ollama pull deepseek-coder:6.7b)"
+fi
+
+echo ""
+echo "=== Entorno listo ==="
+echo "Ollama API:    http://localhost:11434/v1/"
+echo ""
+echo "Modelos disponibles:"
+echo "  deepseek-coder:1.3b  (rápido, default)"
+echo "  deepseek-coder:6.7b  (potente, usar con --pro)"
+echo ""
+echo "Comandos útiles:"
+echo "  asm2c code.asm              # Decompilar con 1.3B"
+echo "  asm2c --pro code.asm        # Decompilar con 6.7B"
+echo "  ghidra-decompile game.exe   # Decompilar con Ghidra"
+echo "  ASM2C_MODEL=\"qwen2.5-coder:1.5b\" asm2c code.asm  # Usar otro modelo"
+echo ""

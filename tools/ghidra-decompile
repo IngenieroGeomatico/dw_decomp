@@ -1,0 +1,103 @@
+#!/bin/bash
+# Ghidra Headless Decompiler - Convierte binarios a C
+# Uso: ghidra-decompile <archivo_binario> [directorio_salida]
+#
+# Basado en: ghcr.io/blacktop/ghidra
+# El código C descompilado se guarda en <directorio_salida>/<binario>.c
+
+set -e
+
+BINARY="$1"
+OUTDIR="${2:-./ghidra_output}"
+
+if [ -z "$BINARY" ]; then
+    echo "Uso: ghidra-decompile <archivo_binario> [directorio_salida]"
+    echo ""
+    echo "Ejemplo: ghidra-decompile game.exe ./decompiled_game"
+    exit 1
+fi
+
+if [ ! -f "$BINARY" ]; then
+    echo "Error: No se encuentra el archivo '$BINARY'"
+    exit 1
+fi
+
+BINARY_ABS=$(readlink -f "$BINARY")
+BINARY_NAME=$(basename "$BINARY")
+OUTDIR_ABS=$(readlink -f "$OUTDIR" 2>/dev/null || echo "$PWD/$OUTDIR")
+mkdir -p "$OUTDIR_ABS"
+
+PROJECT_DIR="/tmp/ghidra_project"
+INPUT_DIR="/input"
+OUTPUT_DIR="/output"
+
+echo "=== Ghidra Decompiler ==="
+echo "Binario: $BINARY_ABS"
+echo "Salida:  $OUTDIR_ABS"
+echo ""
+
+# Crear un script Python para Ghidra que exporte el código C
+cat > /tmp/ghidra_export.py << 'PYEOF'
+import os
+from ghidra.app.decompiler import DecompInterface
+from ghidra.util.task import ConsoleTaskMonitor
+
+# Obtener las funciones del programa
+ifc = DecompInterface()
+ifc.openProgram(currentProgram)
+monitor = ConsoleTaskMonitor()
+
+output_dir = os.environ.get('GHIDRA_OUTPUT_DIR', '/output')
+binary_name = os.environ.get('GHIDRA_BINARY_NAME', 'output')
+output_file = os.path.join(output_dir, binary_name + '.c')
+
+with open(output_file, 'w') as f:
+    fm = currentProgram.getFunctionManager()
+    functions = fm.getFunctions(True)
+    count = 0
+    for func in functions:
+        if count > 0:
+            f.write('\n')
+        f.write(f'// Function: {func.getName()}\n')
+        f.write(f'// Address: {func.getEntryPoint()}\n')
+        if func.getComment():
+            f.write(f'// {func.getComment()}\n')
+        
+        # Decompilar
+        results = ifc.decompileFunction(func, 60, monitor)
+        if results and results.getDecompiledFunction():
+            decomp = results.getDecompiledFunction().getC()
+            f.write(decomp)
+            f.write('\n')
+        count += 1
+
+print(f"[OK] Descompiladas {count} funciones -> {output_file}")
+PYEOF
+
+# Ejecutar Ghidra en modo headless
+docker run --rm -i \
+    -v "$BINARY_ABS:$INPUT_DIR/$BINARY_NAME" \
+    -v "$OUTDIR_ABS:$OUTPUT_DIR" \
+    -v /tmp/ghidra_export.py:/ghidra_export.py \
+    -e GHIDRA_OUTPUT_DIR="$OUTPUT_DIR" \
+    -e GHIDRA_BINARY_NAME="$BINARY_NAME" \
+    ghcr.io/blacktop/ghidra:latest \
+    /ghidra/support/analyzeHeadless "$PROJECT_DIR" "Project" \
+    -import "$INPUT_DIR/$BINARY_NAME" \
+    -postScript /ghidra_export.py 2>&1
+
+echo ""
+echo "=== Descompilación completada ==="
+if [ -f "$OUTDIR_ABS/$BINARY_NAME.c" ]; then
+    echo "Código C generado: $OUTDIR_ABS/$BINARY_NAME.c"
+    wc -l "$OUTDIR_ABS/$BINARY_NAME.c"
+    echo ""
+    echo "=== Primeras 50 líneas ==="
+    head -50 "$OUTDIR_ABS/$BINARY_NAME.c"
+else
+    echo "No se generó el archivo C. Buscando archivos generados..."
+    find "$OUTDIR_ABS" -type f 2>/dev/null
+fi
+
+# Limpiar
+rm -f /tmp/ghidra_export.py

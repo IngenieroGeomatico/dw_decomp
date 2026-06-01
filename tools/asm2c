@@ -1,0 +1,92 @@
+#!/bin/bash
+# Decompilación asm→C usando DeepSeek-Coder vía Ollama
+# Uso: asm2c <archivo_asm> [opciones]
+#   asm2c "código ensamblador" --inline
+#   cat code.asm | asm2c
+#
+# Requiere: Ollama corriendo en localhost:11434
+
+set -e
+
+MODEL="${ASM2C_MODEL:-deepseek-coder:1.3b}"
+OLLAMA_URL="http://localhost:11434/api/generate"
+
+# Si se pide --pro o -p, usar modelo grande
+if [ "$1" = "--pro" ] || [ "$1" = "-p" ]; then
+    MODEL="deepseek-coder:6.7b"
+    shift
+fi
+
+if [ ! -z "$1" ] && [ "$1" != "--inline" ]; then
+    # Leer archivo
+    ASM_CODE=$(cat "$1")
+elif [ ! -t 0 ]; then
+    # Leer de stdin (pipe)
+    ASM_CODE=$(cat)
+elif [ "$1" = "--inline" ] && [ ! -z "$2" ]; then
+    ASM_CODE="$2"
+else
+    echo "Uso: asm2c [--pro|-p] <archivo_asm>"
+    echo "     cat code.asm | asm2c [--pro|-p]"
+    echo "     echo 'mov eax, 1' | asm2c"
+    echo ""
+    echo "  --pro, -p  Usa DeepSeek-Coder 6.7B (más preciso, necesita más RAM)"
+    echo ""
+    echo "Convierte código ensamblador a C usando DeepSeek-Coder"
+    echo "Para usar otro modelo: ASM2C_MODEL=\"deepseek-coder:6.7b\" asm2c code.asm"
+    exit 1
+fi
+
+PROMPT="Eres un experto en ingeniería inversa de PlayStation 1 (MIPS R3000). 
+Convierte este código assembly MIPS PS1 a C legible.
+
+REGLAS:
+- Usa tipos de C estándar: int32_t, int16_t, uint8_t, etc.
+- Las funciones con 'glabel' son nombres de función reales, CONSÉRVALOS
+- %gp_rel(NOMBRE) significa una variable global gp-relative
+- %hi(NOMBRE) y %lo(NOMBRE) son direcciones de símbolos
+- Los 'lui/addiu' combinados cargan una dirección de 32 bits
+- sw/lw son store/load de 32 bits, sb/lb son 8 bits, sh/lh son 16 bits
+- sll = shift left logical, srl = shift right logical
+- addu/addiu = suma, subu = resta
+- beq/bne = branch if equal/not equal, j/jr = jump, jal = jump and link (llamada a función)
+- bnez/beqz = branch if not zero / if zero
+- slti = set if less than immediate
+- $a0-$a3 = argumentos, $v0-$v1 = valor retorno
+- $s0-$s7 = registros salvados (variables locales)
+- $sp = stack pointer, $ra = return address, $gp = global pointer
+- Las funciones empiezan con addiu/sp,-N y terminan con jr/ra
+
+Responde SOLO con el código C, sin explicaciones.
+NUNCA digas que no puedes hacerlo. Este es MIPS R3000 de PlayStation 1.
+
+Código assembly MIPS PS1:
+\`\`\`asm
+${ASM_CODE}
+\`\`\`
+
+Código C:"
+
+echo "=== asm2c: Descompilando con DeepSeek-Coder ==="
+echo ""
+
+# Llamar a Ollama
+curl -s "$OLLAMA_URL" \
+    -d "{
+        \"model\": \"$MODEL\",
+        \"prompt\": $(echo "$PROMPT" | python3 -c "import sys,json; print(json.dumps(sys.stdin.read()))"),
+        \"stream\": false,
+        \"options\": {
+            \"temperature\": 0.1,
+            \"top_p\": 0.9
+        }
+    }" | python3 -c "
+import sys, json
+try:
+    data = json.load(sys.stdin)
+    print(data.get('response', 'Error: No response from model'))
+except Exception as e:
+    print(f'Error: {e}')
+    print('Asegúrate de que Ollama esté corriendo:')
+    print('  docker start ollama')
+" 2>/dev/null || echo "Error al conectar con Ollama. ¿Está corriendo? (docker start ollama)"

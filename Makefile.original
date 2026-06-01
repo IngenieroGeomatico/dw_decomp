@@ -20,7 +20,7 @@ SPLAT := $(PYTHON) -m splat split
 
 MWCCWRAP ?= bin/mwccwrap/mwccwrap.exe
 MWCCWRAP_FLAGS ?= -dll "bin/cc_mips/cc_mips_40.dll"
-MWCCWRAP_FLAGS += -O4 -sdata 8 -Werror -requireprotos -gccincludes \
+MWCCWRAP_FLAGS += -O4 -sdata 0 -Werror -requireprotos -gccincludes \
 		  -lang c -Cpp_exceptions off -RTTI off
 
 export MWCIncludes =
@@ -338,13 +338,6 @@ $(EXE): $(ELF) $(OVERLAY:%=$(BUILDDIR)/%_REL.BIN)
 	$(OBJCOPY) $(addprefix -R .,$(OVERLAY)) -O binary $< $@
 
 -include $(DEP)
-
-# anim.c needs -Werror removed due to Metrowerks DLL string resource issue
-MWCCWRAP_FLAGS_NO_WERROR := $(filter-out -Werror,$(MWCCWRAP_FLAGS))
-$(BUILDDIR)/src/main/anim.c.o: src/main/anim.c
-	@mkdir -p $(dir $@)
-	$(CC) $(CFLAGS) $(CPPFLAGS) $(DEPFLAGS) $<
-	$(METROWRAP) -o $@ $(METROWRAP_FLAGS) $(MWCCWRAP_FLAGS_NO_WERROR) $(CPPFLAGS) $<
 
 $(BUILDDIR)/%.c.o: %.c
 	@mkdir -p $(dir $@)
